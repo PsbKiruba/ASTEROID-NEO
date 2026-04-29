@@ -105,19 +105,19 @@ IEO: Q < 0.983 au
 
 The potentially hazardous asteroid rule is evaluated with the usual geometric proxy:
 
-$$
+```math
 \mathrm{PHA} \approx \left(\mathrm{NEO}\right) \land \left(H \le 22\right) \land \left(\mathrm{MOID} \le 0.05\,\mathrm{au}\right)
-$$
+```
 
 ### PDF Gamma
 
 The hypothesis gamma is not $GM/c^2$. It is a dimensionless ratio selected from the NEO Hypothesis gamma table. For the Apophis Aten, low-inclination case, the implemented rule is:
 
-$$
+```math
 \gamma =
 \frac{g_\mathrm{Mercury} + g_\mathrm{Venus} + g_\mathrm{Earth} + g_\mathrm{Moon}}
      {g_\mathrm{Sun}}
-$$
+```
 
 where the $g$ values are the surface-gravity values transcribed from the supplied PDF.
 
@@ -125,9 +125,9 @@ where the $g$ values are the surface-gravity values transcribed from the supplie
 
 The close-approach relative speed is converted into:
 
-$$
+```math
 \upsilon = \frac{v}{c}
-$$
+```
 
 where $v$ is the selected CAD relative speed and $c$ is the speed of light.
 
@@ -135,35 +135,35 @@ where $v$ is the selected CAD relative speed and $c$ is the speed of light.
 
 The code preserves the PDF-style diagnostic family as a separated layer. Representative terms include:
 
-$$
+```math
 J_{\odot,\mathrm{crit}} =
 \frac{N\,\Delta T\,e\,f\,\gamma\,U}{\left(1 + \upsilon\right)^2}
-$$
+```
 
-$$
+```math
 T_\mathrm{norm} =
 \frac{N\,\gamma\,e\,f}{\upsilon\,U}
-$$
+```
 
-$$
+```math
 T_\mathrm{cause} =
 \frac{\gamma\,e\,f\,\upsilon\,U}{J_{\odot,\mathrm{crit}}}
-$$
+```
 
-$$
+```math
 A_\mathrm{cause}^{-1} =
 \frac{\gamma\,e\,f\,U}{J_{\odot,\mathrm{crit}}\,\upsilon}
-$$
+```
 
-$$
+```math
 \Delta_\mathrm{slip} =
 \frac{N\,\gamma\,e\,f\,\upsilon}{U}
-$$
+```
 
-$$
+```math
 \Phi_\mathrm{NEO} =
 \frac{U\,\upsilon\,\Delta T\,e}{\gamma}
-$$
+```
 
 The implementation reports range-preserved values over the PDF $N$ bands rather than collapsing every diagnostic into a single unqualified scalar.
 
@@ -171,10 +171,10 @@ The implementation reports range-preserved values over the PDF $N$ bands rather 
 
 The code evaluates a GI/OI-style cascade diagnostic using the same PDF gamma. A compact representation of the cascade family is:
 
-$$
+```math
 \mathrm{OI}_k =
 4\,J_\odot^2\,\gamma^2\,U^{k+1}
-$$
+```
 
 The cascade terms are not declared as accepted celestial mechanics. They are treated as hypothesis-driven diagnostics and, when `--dynamics` is enabled, as an optional perturbation experiment.
 
@@ -182,37 +182,37 @@ The cascade terms are not declared as accepted celestial mechanics. They are tre
 
 The numerical state is:
 
-$$
+```math
 \mathbf{y}(t) =
 \begin{bmatrix}
 \mathbf{r}(t) \\
 \mathbf{v}(t)
 \end{bmatrix}
-$$
+```
 
 with position in au and velocity in au/day.
 
 The integrated equation is:
 
-$$
+```math
 \frac{d\mathbf{y}}{dt} =
 \begin{bmatrix}
 \mathbf{v} \\
 \mathbf{a}_\mathrm{total}
 \end{bmatrix}
-$$
+```
 
 ### Barycentric N-body Gravity
 
 In barycentric mode, the direct perturbing-body acceleration is:
 
-$$
+```math
 \mathbf{a}_\mathrm{Nbody}
 =
 \sum_i \mu_i
 \frac{\mathbf{r}_i - \mathbf{r}}
      {\lVert \mathbf{r}_i - \mathbf{r} \rVert^3}
-$$
+```
 
 where each $\mathbf{r}_i$ is retrieved from JPL Horizons.
 
@@ -220,7 +220,7 @@ where each $\mathbf{r}_i$ is retrieved from JPL Horizons.
 
 The optional solar 1PN correction is applied relative to the Sun:
 
-$$
+```math
 \mathbf{a}_\mathrm{1PN}
 =
 \frac{\mu_\odot}{c^2 r^3}
@@ -228,7 +228,7 @@ $$
 \left(4\frac{\mu_\odot}{r} - v^2\right)\mathbf{r}
 + 4(\mathbf{r}\cdot\mathbf{v})\mathbf{v}
 \right]
-$$
+```
 
 The code converts this into au/day units internally.
 
@@ -236,11 +236,11 @@ The code converts this into au/day units internally.
 
 When SBDB model parameters are available, radial and transverse non-gravitational terms are applied as:
 
-$$
+```math
 \mathbf{a}_\mathrm{NG}
 =
 A_1\,\hat{\mathbf{r}} + A_2\,\hat{\mathbf{t}}
-$$
+```
 
 where $\hat{\mathbf{r}}$ is the radial unit vector and $\hat{\mathbf{t}}$ is the along-track unit vector.
 
@@ -248,7 +248,7 @@ where $\hat{\mathbf{r}}$ is the radial unit vector and $\hat{\mathbf{t}}$ is the
 
 The cascade direction uses user-selectable velocity, radial, and orbital-normal weights:
 
-$$
+```math
 \hat{\mathbf{d}} =
 \frac{
 w_v\hat{\mathbf{v}} +
@@ -262,13 +262,13 @@ w_r\hat{\mathbf{r}} +
 w_n\hat{\mathbf{n}}
 \right\rVert
 }
-$$
+```
 
 The default is:
 
-$$
+```math
 (w_v,w_r,w_n)=(1,0,1)
-$$
+```
 
 so the perturbation combines along-velocity and orbital-normal structure.
 
@@ -276,11 +276,11 @@ so the perturbation combines along-velocity and orbital-normal structure.
 
 The cascade acceleration is:
 
-$$
+```math
 \mathbf{a}_\mathrm{cascade}
 =
 a_c\,\hat{\mathbf{d}}
-$$
+```
 
 By default, $a_c$ is source-backed by the SBDB A1/A2 acceleration norm. A user can override it with `--cascade-accel-au-d2`, but the recommended mode is to let the code derive it from online SBDB parameters.
 
@@ -295,11 +295,11 @@ The phasing term is implemented differently by integrator:
 
 The adaptive DOP853 path now applies:
 
-$$
+```math
 \mathbf{a}_\mathrm{phase}
 =
 g_\phi \, s_\phi \, \mathbf{a}_\mathrm{cascade}
-$$
+```
 
 where $g_\phi$ is `--phase-warp-gain` and $s_\phi$ is a bounded scalar derived from the NEO phasing and gravity-phasing diagnostics.
 
@@ -307,7 +307,7 @@ where $g_\phi$ is `--phase-warp-gain` and $s_\phi$ is a bounded scalar derived f
 
 For the supported predictor branch:
 
-$$
+```math
 \mathbf{a}_\mathrm{total}
 =
 \mathbf{a}_\mathrm{Nbody}
@@ -315,7 +315,7 @@ $$
 + \mathbf{a}_\mathrm{NG}
 + \mathbf{a}_\mathrm{cascade}
 + \mathbf{a}_\mathrm{phase}
-$$
+```
 
 Terms can be disabled for sensitivity testing, but the full model is the recommended scientific run.
 
