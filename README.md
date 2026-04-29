@@ -495,6 +495,11 @@ The dynamics run writes:
 | `fig_dynamical_integrator_distance.*` | Distance curve against Horizons |
 | `fig_dynamical_integrator_residuals.*` | Residual diagnostics |
 | `fig_dynamical_integrator_3d_trajectory.*` | 3D trajectory view |
+| `fig_public_close_approach_timeline.*` | Public-facing CAD encounter timeline in lunar distances |
+| `fig_public_close_approach_dashboard.*` | Four-panel encounter explainer with distance, range rate, geometry, and residuals |
+| `fig_public_solar_system_context.*` | Ecliptic Sun-Earth-NEO context map for outreach and society talks |
+| `fig_public_force_budget.*` | Acceleration-scale comparison for the active force terms |
+| `fig_public_hypothesis_diagnostics.*` | Plain-language view of hypothesis diagnostic magnitudes along the arc |
 | `fig_covariance_gi_oi_cascade_anchor_bands.*` | Anchor uncertainty bands |
 | `fig_covariance_gi_oi_cascade_diagnostics.*` | GI/OI uncertainty diagnostics |
 | `dynamical_integrator_captions.md` | Publication-style captions |

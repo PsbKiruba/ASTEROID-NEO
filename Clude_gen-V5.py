@@ -3845,6 +3845,7 @@ def _write_dynamics_tables(
 def _write_dynamics_plots(
     output_dir: Path,
     neo: NEOObject,
+    hypothesis: HypothesisTerms,
     meta: dict[str, Any],
     integrated_distance_au: Any,
     residual_km: Any,
@@ -3862,6 +3863,11 @@ def _write_dynamics_plots(
     horizons_km = np.asarray(meta["dist_au"], dtype=float) * AU_KM
     integrated_km = np.asarray(integrated_distance_au, dtype=float) * AU_KM
     residual = np.asarray(residual_km, dtype=float)
+    earth_radius_km = 6371.0
+    lunar_distance_km = 384400.0
+    seconds_per_day = float(SECONDS_PER_DAY)
+    au_d_to_km_s = AU_KM / seconds_per_day
+    au_d2_to_nm_s2 = AU_M * 1.0e9 / (seconds_per_day * seconds_per_day)
 
     def _save(fig: Any, stem: str, dpi: int = 220) -> None:
         for suffix in ["png", "svg", "pdf"]:
@@ -3869,6 +3875,30 @@ def _write_dynamics_plots(
             fig.savefig(path, dpi=dpi if suffix == "png" else None, bbox_inches="tight")
             figures.append(str(path))
         plt.close(fig)
+
+    def _short_date(text: Any) -> str:
+        parts = str(text).replace("A.D.", "").strip().split()
+        if len(parts) >= 2:
+            return " ".join(parts[:2])
+        return str(text)
+
+    def _annotate_panel(ax: Any, label: str) -> None:
+        ax.text(
+            0.02,
+            0.96,
+            label,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=10,
+            fontweight="bold",
+            bbox={"facecolor": "white", "edgecolor": "#cccccc", "boxstyle": "round,pad=0.18", "alpha": 0.92},
+        )
+
+    anchor_jd = np.asarray([float(row["cad_jd_tdb"]) for row in anchor_rows], dtype=float) if anchor_rows else np.asarray([], dtype=float)
+    anchor_t_year = (anchor_jd - jd[0]) / 365.25636 if len(anchor_jd) else np.asarray([], dtype=float)
+    anchor_labels = [_short_date(row["cad_date_tdb"]) for row in anchor_rows]
+    closest_anchor_idx = int(np.argmin([float(row["cad_distance_km"]) for row in anchor_rows])) if anchor_rows else 0
 
     fig, ax = plt.subplots(figsize=(12.8, 6.3))
     ax.plot(t_year, horizons_km, color="#1d3557", lw=1.5, label="Horizons geocentric range")
@@ -3922,6 +3952,218 @@ def _write_dynamics_plots(
     ax.set_title("Integrated Geocentric 3-D Trajectory")
     _save(fig, "fig_dynamical_integrator_3d_trajectory")
 
+    if anchor_rows:
+        cad_ld = np.asarray([float(row["cad_distance_km"]) / lunar_distance_km for row in anchor_rows], dtype=float)
+        model_minus_cad = np.asarray([float(row["integrated_minus_cad_km"]) for row in anchor_rows], dtype=float)
+        colors = ["#2a9d8f"] * len(anchor_rows)
+        colors[closest_anchor_idx] = "#d1495b"
+        x = np.arange(len(anchor_rows))
+        fig, ax = plt.subplots(figsize=(12.8, 6.4))
+        bars = ax.bar(x, cad_ld, color=colors, edgecolor="#222222", linewidth=0.6)
+        ax.axhline(1.0, color="#1d3557", lw=1.2, ls="--", label="1 lunar distance")
+        ax.axhline(0.1, color="#999999", lw=0.8, ls=":", label="0.1 lunar distance")
+        ax.set_yscale("log")
+        ax.set_xticks(x)
+        ax.set_xticklabels(anchor_labels, rotation=30, ha="right")
+        ax.set_ylabel("CAD Earth distance (lunar distances)")
+        ax.set_title(f"{neo.fullname}: Close-Approach Timeline in Lunar Distances")
+        ax.grid(True, which="both", axis="y", alpha=0.25)
+        ax.legend(loc="best", fontsize=8)
+        for i, bar in enumerate(bars):
+            label = f"{cad_ld[i]:.2f} LD"
+            if i == closest_anchor_idx:
+                label += "\nclosest"
+            ax.text(bar.get_x() + bar.get_width() / 2.0, cad_ld[i] * 1.08, label, ha="center", va="bottom", fontsize=8)
+        ax2 = ax.twinx()
+        ax2.plot(x, model_minus_cad / 1000.0, color="#264653", marker="o", lw=1.4, label="model-CAD residual")
+        ax2.axhline(0.0, color="#264653", lw=0.8, alpha=0.5)
+        ax2.set_ylabel("Integrated minus CAD (thousand km)")
+        lines, names = ax.get_legend_handles_labels()
+        lines2, names2 = ax2.get_legend_handles_labels()
+        ax.legend(lines + lines2, names + names2, loc="best", fontsize=8)
+        _save(fig, "fig_public_close_approach_timeline", dpi=240)
+
+    state = np.asarray(integrated_state, dtype=float)
+    earth_for_plot = np.asarray(meta.get("dynamics_earth_au", meta["earth_helio_au"]), dtype=float)
+    geo_pos = state[:, :3] - earth_for_plot
+    geo_km = geo_pos * AU_KM
+    range_rate_km_s = np.asarray(meta["geo_range_rate_au_d"], dtype=float) * au_d_to_km_s
+    nearest_jd = float(anchor_rows[closest_anchor_idx]["cad_jd_tdb"]) if anchor_rows else float(jd[int(np.argmin(integrated_km))])
+    window_days = 35.0
+    zoom = np.abs(jd - nearest_jd) <= window_days
+    if int(np.count_nonzero(zoom)) < 8:
+        zoom = np.ones_like(jd, dtype=bool)
+    t_zoom_days = jd[zoom] - nearest_jd
+    geo_zoom_re = geo_km[zoom] / earth_radius_km
+    fig, axes = plt.subplots(2, 2, figsize=(13.6, 9.6), facecolor="white")
+    ax = axes[0, 0]
+    ax.plot(t_zoom_days, integrated_km[zoom] / lunar_distance_km, color="#1d3557", lw=1.8, label="integrated range")
+    ax.plot(t_zoom_days, horizons_km[zoom] / lunar_distance_km, color="#2a9d8f", lw=1.1, ls="--", label="Horizons sampled range")
+    ax.axhline(1.0, color="#666666", lw=0.8, ls=":", label="Moon distance")
+    ax.set_yscale("log")
+    ax.set_xlabel("Days from nearest CAD epoch")
+    ax.set_ylabel("Distance from Earth (lunar distances)")
+    ax.set_title("How Close Is the Encounter?")
+    ax.grid(True, which="both", alpha=0.25)
+    ax.legend(loc="best", fontsize=8)
+    _annotate_panel(ax, "A")
+
+    ax = axes[0, 1]
+    ax.plot(t_zoom_days, range_rate_km_s[zoom], color="#d1495b", lw=1.5)
+    ax.axhline(0.0, color="black", lw=0.8, alpha=0.6)
+    ax.set_xlabel("Days from nearest CAD epoch")
+    ax.set_ylabel("Range rate (km/s)")
+    ax.set_title("Inbound and Outbound Motion")
+    ax.grid(True, alpha=0.25)
+    _annotate_panel(ax, "B")
+
+    ax = axes[1, 0]
+    geom_zoom = np.abs(jd - nearest_jd) <= 1.0
+    if int(np.count_nonzero(geom_zoom)) < 4:
+        geom_zoom = zoom
+    geo_geom_re = geo_km[geom_zoom] / earth_radius_km
+    ax.plot(geo_geom_re[:, 0], geo_geom_re[:, 1], color="#264653", lw=1.4, label="integrated path")
+    earth = plt.Circle((0.0, 0.0), 1.0, color="#2a9df4", alpha=0.55, label="Earth")
+    moon = plt.Circle((0.0, 0.0), lunar_distance_km / earth_radius_km, fill=False, color="#888888", lw=1.0, ls="--", label="Moon orbit scale")
+    ax.add_patch(earth)
+    ax.add_patch(moon)
+    ax.scatter([0.0], [0.0], s=25, color="#003049", zorder=5)
+    if anchor_rows:
+        anchor_idx = int(np.argmin(np.abs(jd - nearest_jd)))
+        ax.scatter([geo_km[anchor_idx, 0] / earth_radius_km], [geo_km[anchor_idx, 1] / earth_radius_km], s=80, color="#d1495b", edgecolor="black", zorder=6, label="nearest CAD epoch")
+    ax.set_xlabel("Geocentric X (Earth radii)")
+    ax.set_ylabel("Geocentric Y (Earth radii)")
+    ax.set_title("Earth-Moon Scale Encounter Geometry")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=8)
+    lim = max(float(np.nanmax(np.abs(geo_geom_re))) * 1.08, lunar_distance_km / earth_radius_km * 1.12, 10.0)
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
+    try:
+        ax.set_aspect("equal", adjustable="box")
+    except Exception:
+        pass
+    _annotate_panel(ax, "C")
+
+    ax = axes[1, 1]
+    ax.plot(t_zoom_days, residual[zoom], color="#6a994e", lw=1.3)
+    ax.axhline(0.0, color="black", lw=0.8, alpha=0.6)
+    ax.set_xlabel("Days from nearest CAD epoch")
+    ax.set_ylabel("Integrated minus Horizons (km)")
+    ax.set_title("Prediction Residual Near Encounter")
+    ax.grid(True, alpha=0.25)
+    _annotate_panel(ax, "D")
+    fig.suptitle("Close-Approach Dashboard for Public and Society Talks", fontsize=15, y=0.995)
+    _save(fig, "fig_public_close_approach_dashboard", dpi=240)
+
+    helio_pos = np.asarray(meta["helio_pos_au"], dtype=float)
+    earth_helio = np.asarray(meta["earth_helio_au"], dtype=float)
+    fig, ax = plt.subplots(figsize=(9.4, 9.0), facecolor="white")
+    theta = np.linspace(0.0, 2.0 * np.pi, 361)
+    ax.plot(np.cos(theta), np.sin(theta), color="#999999", lw=0.9, ls="--", label="1 au reference circle")
+    ax.plot(earth_helio[:, 0], earth_helio[:, 1], color="#2a9df4", lw=1.5, label="Earth path from Horizons")
+    ax.plot(helio_pos[:, 0], helio_pos[:, 1], color="#d1495b", lw=1.2, label="NEO heliocentric path from Horizons")
+    ax.scatter([0.0], [0.0], s=180, color="#f4a261", edgecolor="#7a3b00", linewidth=0.8, label="Sun")
+    if anchor_rows:
+        idxs = [int(np.argmin(np.abs(jd - float(row["cad_jd_tdb"])))) for row in anchor_rows]
+        ax.scatter(earth_helio[idxs, 0], earth_helio[idxs, 1], s=40, color="#1d3557", edgecolor="white", linewidth=0.5, zorder=5, label="Earth at CAD epochs")
+        ax.scatter(helio_pos[idxs, 0], helio_pos[idxs, 1], s=42, color="#edae49", edgecolor="black", linewidth=0.5, zorder=6, label="NEO at CAD epochs")
+    ax.set_xlabel("Ecliptic X (au)")
+    ax.set_ylabel("Ecliptic Y (au)")
+    ax.set_title("Solar-System Context: Earth and NEO Paths")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=8)
+    try:
+        ax.set_aspect("equal", adjustable="box")
+    except Exception:
+        pass
+    _save(fig, "fig_public_solar_system_context", dpi=240)
+
+    accel_labels = ["solar GR", "SBDB A1/A2", "cascade", "phase"]
+    accel_median = np.asarray(
+        [
+            float(diagnostics.get("solar_gr_acceleration_au_d2_median", 0.0)),
+            float(diagnostics.get("standard_nongrav_acceleration_au_d2_median", 0.0)),
+            float(diagnostics.get("cascade_acceleration_au_d2_median", 0.0)),
+            float(diagnostics.get("phase_acceleration_au_d2_median", 0.0)),
+        ],
+        dtype=float,
+    ) * au_d2_to_nm_s2
+    accel_max = np.asarray(
+        [
+            float(diagnostics.get("solar_gr_acceleration_au_d2_max", 0.0)),
+            float(diagnostics.get("standard_nongrav_acceleration_au_d2_max", 0.0)),
+            float(diagnostics.get("cascade_acceleration_au_d2_max", 0.0)),
+            float(diagnostics.get("phase_acceleration_au_d2_max", 0.0)),
+        ],
+        dtype=float,
+    ) * au_d2_to_nm_s2
+    fig, ax = plt.subplots(figsize=(10.8, 6.2), facecolor="white")
+    x = np.arange(len(accel_labels))
+    width = 0.36
+    floor = 1e-12
+    ax.bar(x - width / 2.0, np.maximum(accel_median, floor), width, color="#2a9d8f", label="median")
+    ax.bar(x + width / 2.0, np.maximum(accel_max, floor), width, color="#d1495b", label="maximum")
+    ax.set_yscale("log")
+    ax.set_xticks(x)
+    ax.set_xticklabels(accel_labels)
+    ax.set_ylabel("Acceleration scale (nm/s^2)")
+    ax.set_title("Force-Budget Scale in the Experimental Predictor")
+    ax.grid(True, which="both", axis="y", alpha=0.25)
+    ax.legend(loc="best")
+    for i, value in enumerate(accel_median):
+        ax.text(i - width / 2.0, max(value, floor) * 1.08, f"{value:.2g}", ha="center", va="bottom", fontsize=8)
+    _save(fig, "fig_public_force_budget", dpi=240)
+
+    pdf = meta.get("pdf_arrays", {})
+    diagnostic_items = [
+        ("gamma", abs(float(hypothesis.inputs.gamma_ratio))),
+        ("v/c", abs(float(hypothesis.inputs.upsilon_v_over_c))),
+        ("Seqcr", abs(float(hypothesis.seqcr))),
+        ("TrajLoss", abs(float(hypothesis.trajectory_loss))),
+        ("GI_N", abs(float(hypothesis.gi_n_raw))),
+        ("OI_N", abs(float(hypothesis.oi_n_raw))),
+        ("neo phasing", abs(float(hypothesis.scaled_terms.get("neo_phasing", 0.0)))),
+        ("time norm", abs(float(hypothesis.scaled_terms.get("time_norm", 0.0)))),
+    ]
+    log_values = np.asarray([math.log10(max(value, 1e-300)) for _, value in diagnostic_items], dtype=float)
+    finite = np.isfinite(log_values)
+    if np.any(finite):
+        lo = float(np.min(log_values[finite]))
+        hi = float(np.max(log_values[finite]))
+        normalized = (log_values - lo) / max(hi - lo, 1e-12)
+    else:
+        normalized = np.zeros_like(log_values)
+    fig, axes = plt.subplots(1, 2, figsize=(13.6, 6.2), facecolor="white")
+    ax = axes[0]
+    y = np.arange(len(diagnostic_items))
+    ax.barh(y, normalized, color=["#2a9d8f", "#2a9d8f", "#edae49", "#edae49", "#d1495b", "#d1495b", "#6a994e", "#6a994e"])
+    ax.set_yticks(y)
+    ax.set_yticklabels([name for name, _ in diagnostic_items])
+    ax.invert_yaxis()
+    ax.set_xlabel("Normalized log magnitude")
+    ax.set_title("NEO Hypothesis Diagnostic Scale")
+    ax.grid(True, axis="x", alpha=0.25)
+    for i, (_, value) in enumerate(diagnostic_items):
+        ax.text(min(normalized[i] + 0.02, 1.02), i, f"log10={log_values[i]:.1f}", va="center", fontsize=8)
+    _annotate_panel(ax, "A")
+
+    ax = axes[1]
+    ax.plot(t_year, meta["gi_log"], color="#1d3557", lw=1.3, label="log10 |GI_N|")
+    ax.plot(t_year, meta["oi_log"], color="#d1495b", lw=1.3, label="log10 |OI_N|")
+    if "neo_phasing" in pdf:
+        ax.plot(t_year, np.log10(np.maximum(np.abs(np.asarray(pdf["neo_phasing"], dtype=float)), 1e-300)), color="#6a994e", lw=1.0, label="log10 |neo phasing|")
+    ax.set_xlabel(f"Years from {meta['calendar'][0]}")
+    ax.set_ylabel("Log magnitude")
+    ax.set_title("Hypothesis Diagnostics Along the Arc")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=8)
+    for value in anchor_t_year:
+        ax.axvline(value, color="#999999", lw=0.55, alpha=0.18)
+    _annotate_panel(ax, "B")
+    fig.suptitle("Plain-Language Diagnostic View of the NEO Hypothesis Layer", fontsize=15, y=0.995)
+    _save(fig, "fig_public_hypothesis_diagnostics", dpi=240)
+
     caption_path = output_dir / "dynamical_integrator_captions.md"
     caption_path.write_text(
         "\n\n".join(
@@ -3930,6 +4172,11 @@ def _write_dynamics_plots(
                 "Figure: Dynamics-first cascade propagation against Horizons. The numerical trajectory is propagated from a Horizons state in the selected dynamics frame with live-Horizons N-body perturbing bodies and the GI_N/OI_N cascade field, while CAD anchors remain validation overlays.",
                 "Figure: Numerical propagation residual relative to Horizons. Residuals expose drift introduced by integrating a simplified force model rather than refitting to Horizons or CAD labels.",
                 "Figure: Integrated geocentric 3-D trajectory. The curve is the propagated state transformed into the Earth-centered frame for spatial inspection of the encounter geometry.",
+                "Figure: Close-approach timeline in lunar distances. CAD anchors are converted into Moon-distance units and paired with model-minus-CAD residuals so general audiences can understand both encounter scale and predictor error.",
+                "Figure: Close-approach dashboard. A four-panel public-facing view shows distance in lunar distances, inbound/outbound range rate, Earth-centered encounter geometry in Earth radii, and the local prediction residual around the nearest CAD epoch.",
+                "Figure: Solar-system context. Earth and NEO heliocentric paths are shown in the ecliptic plane with CAD epochs marked on both tracks, making the encounter geometry visible without requiring state-vector notation.",
+                "Figure: Force-budget scale. Median and maximum acceleration magnitudes are compared for relativistic, standard non-gravitational, cascade, and phasing terms in nm/s^2.",
+                "Figure: Public hypothesis diagnostics. The static PDF-derived terms and the time-varying GI_N/OI_N diagnostics are shown on log-magnitude scales to explain what the hypothesis layer contributes without presenting it as accepted force modeling.",
                 f"Cascade diagnostics: median acceleration={diagnostics.get('cascade_acceleration_au_d2_median', 0.0):.6e} au/d^2; max phase acceleration={diagnostics.get('phase_acceleration_au_d2_max', 0.0):.6e} au/d^2.",
             ]
         )
@@ -4126,7 +4373,7 @@ def run_dynamical_propagation(
         dyn_diag,
     )
     table_paths.extend(uncertainty_table_paths)
-    figure_paths = _write_dynamics_plots(output_dir, neo, meta, integrated_dist_au, residual_km, integrated_state, anchor_rows, dyn_diag)
+    figure_paths = _write_dynamics_plots(output_dir, neo, hypothesis, meta, integrated_dist_au, residual_km, integrated_state, anchor_rows, dyn_diag)
     figure_paths.extend(uncertainty_figures)
     publication_assets = [path for path in figure_paths if path.endswith("_captions.md") or path.endswith("captions.md")]
     publication_assets.extend(uncertainty_publication_assets)
