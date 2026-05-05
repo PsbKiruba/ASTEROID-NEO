@@ -3937,6 +3937,64 @@ def _write_dynamics_plots(
     ax.grid(True, alpha=0.25)
     _save(fig, "fig_dynamical_integrator_residuals")
 
+    if len(jd) >= 3:
+        trend_coeff = np.polyfit(t_year, residual, deg=1)
+        trend = np.polyval(trend_coeff, t_year)
+        detrended = residual - trend
+        fig, axes = plt.subplots(2, 1, figsize=(12.8, 8.0), sharex=True, facecolor="white")
+        axes[0].plot(t_year, residual, color="#2a9d8f", lw=1.0, label="raw residual")
+        axes[0].plot(t_year, trend, color="#d1495b", lw=1.0, ls="--", label="linear trend")
+        axes[0].axhline(0.0, color="black", lw=0.7, alpha=0.55)
+        axes[0].set_ylabel("Residual (km)")
+        axes[0].set_title("Residual Structure: Raw Drift and Linear Trend")
+        axes[0].grid(True, alpha=0.25)
+        axes[0].legend(loc="best", fontsize=8)
+        axes[1].plot(t_year, detrended, color="#1d3557", lw=1.0, label="residual minus linear trend")
+        axes[1].axhline(0.0, color="black", lw=0.7, alpha=0.55)
+        axes[1].set_xlabel("Years from start")
+        axes[1].set_ylabel("Detrended residual (km)")
+        axes[1].set_title("Curvature After Removing Straight-Line Drift")
+        axes[1].grid(True, alpha=0.25)
+        for axis in axes:
+            for value in anchor_t_year:
+                axis.axvline(value, color="#999999", lw=0.55, alpha=0.18)
+            if anchor_rows:
+                axis.axvline(anchor_t_year[closest_anchor_idx], color="#d1495b", lw=0.9, ls="--", alpha=0.6)
+        _save(fig, "fig_dynamical_integrator_residual_structure", dpi=230)
+
+    focus_jd = float(anchor_rows[closest_anchor_idx]["cad_jd_tdb"]) if anchor_rows else float(jd[int(np.argmin(integrated_km))])
+    zoom_days = 45.0 if anchor_rows else max(10.0, min(45.0, 0.25 * (float(jd[-1]) - float(jd[0]))))
+    zoom_mask = np.abs(jd - focus_jd) <= zoom_days
+    if int(np.count_nonzero(zoom_mask)) >= 4:
+        fig, axes = plt.subplots(2, 1, figsize=(12.8, 8.2), sharex=True, facecolor="white")
+        days_from_focus = jd[zoom_mask] - focus_jd
+        axes[0].plot(days_from_focus, horizons_km[zoom_mask] / lunar_distance_km, color="#1d3557", lw=1.5, label="Horizons sampled range")
+        axes[0].plot(days_from_focus, integrated_km[zoom_mask] / lunar_distance_km, color="#d1495b", lw=1.1, label="integrated predictor range")
+        axes[0].axhline(1.0, color="#666666", lw=0.8, ls=":", label="1 lunar distance")
+        if anchor_rows:
+            axes[0].scatter(
+                [(float(row["cad_jd_tdb"]) - focus_jd) for row in anchor_rows if abs(float(row["cad_jd_tdb"]) - focus_jd) <= zoom_days],
+                [float(row["cad_distance_km"]) / lunar_distance_km for row in anchor_rows if abs(float(row["cad_jd_tdb"]) - focus_jd) <= zoom_days],
+                s=42,
+                color="#edae49",
+                edgecolor="black",
+                linewidth=0.5,
+                label="CAD anchor",
+                zorder=5,
+            )
+        axes[0].set_yscale("log")
+        axes[0].set_ylabel("Distance (lunar distances)")
+        axes[0].set_title("Close-Approach Zoom: Distance Structure")
+        axes[0].grid(True, which="both", alpha=0.25)
+        axes[0].legend(loc="best", fontsize=8)
+        axes[1].plot(days_from_focus, residual[zoom_mask], color="#6a994e", lw=1.2)
+        axes[1].axhline(0.0, color="black", lw=0.8, alpha=0.6)
+        axes[1].set_xlabel("Days from closest CAD/minimum epoch")
+        axes[1].set_ylabel("Integrated minus Horizons (km)")
+        axes[1].set_title("Close-Approach Zoom: Residual Structure")
+        axes[1].grid(True, alpha=0.25)
+        _save(fig, "fig_dynamical_integrator_close_approach_zoom", dpi=240)
+
     state = np.asarray(integrated_state, dtype=float)
     earth_for_plot = np.asarray(meta.get("dynamics_earth_au", meta["earth_helio_au"]), dtype=float)
     geo_pos = state[:, :3] - earth_for_plot
@@ -4178,6 +4236,8 @@ def _write_dynamics_plots(
                 "# Dynamical Integrator Figures",
                 "Figure: Dynamics-first cascade propagation against Horizons. The numerical trajectory is propagated from a Horizons state in the selected dynamics frame with live-Horizons N-body perturbing bodies and the GI_N/OI_N cascade field, while CAD anchors remain validation overlays.",
                 "Figure: Numerical propagation residual relative to Horizons. Residuals expose drift introduced by integrating a simplified force model rather than refitting to Horizons or CAD labels.",
+                "Figure: Residual structure with linear trend removed. The top panel shows raw range residuals and their best-fit linear drift; the lower panel removes that straight-line component so post-encounter curvature remains visible.",
+                "Figure: Close-approach zoom. The distance panel uses lunar-distance units around the nearest CAD/minimum epoch, while the residual panel shows the local predictor-minus-Horizons structure that can be hidden in full-arc plots.",
                 "Figure: Integrated geocentric 3-D trajectory. The curve is the propagated state transformed into the Earth-centered frame for spatial inspection of the encounter geometry.",
                 "Figure: Close-approach timeline in lunar distances. CAD anchors are converted into Moon-distance units and paired with model-minus-CAD residuals so general audiences can understand both encounter scale and predictor error.",
                 "Figure: Close-approach dashboard. A four-panel public-facing view shows distance in lunar distances, inbound/outbound range rate, Earth-centered encounter geometry in Earth radii, and the local prediction residual around the nearest CAD epoch.",

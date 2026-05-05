@@ -494,6 +494,8 @@ The dynamics run writes:
 | `table_covariance_gi_oi_cascade_uncertainty.csv` | Covariance and cascade uncertainty summary |
 | `fig_dynamical_integrator_distance.*` | Distance curve against Horizons |
 | `fig_dynamical_integrator_residuals.*` | Residual diagnostics |
+| `fig_dynamical_integrator_residual_structure.*` | Raw residual, linear trend, and detrended residual curvature |
+| `fig_dynamical_integrator_close_approach_zoom.*` | Close-approach distance and residual zoom in lunar-distance units |
 | `fig_dynamical_integrator_3d_trajectory.*` | 3D trajectory view |
 | `fig_public_close_approach_timeline.*` | Public-facing CAD encounter timeline in lunar distances |
 | `fig_public_close_approach_dashboard.*` | Four-panel encounter explainer with distance, range rate, geometry, and residuals |
