@@ -496,6 +496,8 @@ The dynamics run writes:
 | `fig_dynamical_integrator_residuals.*` | Residual diagnostics |
 | `fig_dynamical_integrator_residual_structure.*` | Raw residual, linear trend, and detrended residual curvature |
 | `fig_dynamical_integrator_close_approach_zoom.*` | Close-approach distance and residual zoom in lunar-distance units |
+| `fig_gravitational_potential_gi_oi_comparison.*` | Standard gravitational potential compared with GI/OI effective potential contribution |
+| `fig_gravitational_potential_close_approach.*` | Close-approach zoom of standard and GI/OI effective potential terms |
 | `fig_dynamical_integrator_3d_trajectory.*` | 3D trajectory view |
 | `fig_public_close_approach_timeline.*` | Public-facing CAD encounter timeline in lunar distances |
 | `fig_public_close_approach_dashboard.*` | Four-panel encounter explainer with distance, range rate, geometry, and residuals |

@@ -3859,6 +3859,11 @@ def _write_dynamics_plots(
     integrated_state: Any,
     anchor_rows: list[dict[str, Any]],
     diagnostics: dict[str, Any],
+    perturbers: dict[str, dict[str, Any]] | None = None,
+    frame: str = "barycentric",
+    weights: tuple[float, float, float] = (1.0, 0.0, 1.0),
+    cascade_accel_au_d2: float | None = None,
+    phase_warp_gain: float = 1.0,
 ) -> list[str]:
     import numpy as np
     import matplotlib.pyplot as plt
@@ -3875,6 +3880,8 @@ def _write_dynamics_plots(
     seconds_per_day = float(SECONDS_PER_DAY)
     au_d_to_km_s = AU_KM / seconds_per_day
     au_d2_to_nm_s2 = AU_M * 1.0e9 / (seconds_per_day * seconds_per_day)
+    au2_d2_to_km2_s2 = (AU_KM / seconds_per_day) ** 2
+    au2_d2_to_m2_s2 = (AU_M / seconds_per_day) ** 2
 
     def _save(fig: Any, stem: str, dpi: int = 220) -> None:
         for suffix in ["png", "svg", "pdf"]:
@@ -3994,6 +4001,74 @@ def _write_dynamics_plots(
         axes[1].set_title("Close-Approach Zoom: Residual Structure")
         axes[1].grid(True, alpha=0.25)
         _save(fig, "fig_dynamical_integrator_close_approach_zoom", dpi=240)
+
+    state_for_potential = np.asarray(integrated_state, dtype=float)
+    perturber_map = perturbers or {}
+    phi_standard_au2_d2 = np.zeros(len(jd), dtype=float)
+    if frame == "heliocentric" or "sun" not in perturber_map:
+        r_solar = np.linalg.norm(state_for_potential[:, :3], axis=1)
+        phi_standard_au2_d2 += -GM_SUN_M3_S2 * (SECONDS_PER_DAY * SECONDS_PER_DAY) / (AU_M**3) / np.maximum(r_solar, 1e-300)
+    for body in perturber_map.values():
+        body_pos = np.asarray(body.get("positions_au", []), dtype=float)
+        if body_pos.shape != state_for_potential[:, :3].shape:
+            continue
+        sep = np.linalg.norm(state_for_potential[:, :3] - body_pos, axis=1)
+        phi_standard_au2_d2 += -float(body["mu_au3_d2"]) / np.maximum(sep, 1e-300)
+
+    cascade_acc = np.zeros((len(jd), 3), dtype=float)
+    for i, row in enumerate(state_for_potential):
+        r = row[:3]
+        v = row[3:6]
+        if frame == "barycentric" and "sun" in perturber_map:
+            r = r - np.asarray(perturber_map["sun"]["positions_au"][i], dtype=float)
+            v = v - np.asarray(perturber_map["sun"]["velocities_au_d"][i], dtype=float)
+        cacc = _cascade_acceleration_au_d2(r, v, neo, hypothesis, weights, cascade_accel_au_d2)
+        cascade_acc[i] = cacc + _phase_modulated_acceleration_au_d2(cacc, hypothesis, phase_warp_gain)
+    phi_cascade_au2_d2 = np.zeros(len(jd), dtype=float)
+    dr = np.diff(state_for_potential[:, :3], axis=0)
+    if len(dr):
+        avg_acc = 0.5 * (cascade_acc[1:] + cascade_acc[:-1])
+        phi_cascade_au2_d2[1:] = np.cumsum(-np.einsum("ij,ij->i", avg_acc, dr))
+    phi_with_gi_oi_au2_d2 = phi_standard_au2_d2 + phi_cascade_au2_d2
+    phi_standard_rel = (phi_standard_au2_d2 - phi_standard_au2_d2[0]) * au2_d2_to_km2_s2
+    phi_with_rel = (phi_with_gi_oi_au2_d2 - phi_with_gi_oi_au2_d2[0]) * au2_d2_to_km2_s2
+    phi_cascade_m2_s2 = phi_cascade_au2_d2 * au2_d2_to_m2_s2
+
+    fig, axes = plt.subplots(2, 1, figsize=(12.8, 8.2), sharex=True, facecolor="white")
+    axes[0].plot(t_year, phi_standard_rel, color="#1d3557", lw=1.4, label="standard gravity only")
+    axes[0].plot(t_year, phi_with_rel, color="#d1495b", lw=1.0, ls="--", label="standard + GI/OI effective contribution")
+    axes[0].set_ylabel(r"$\Delta\Phi$ from start (km$^2$/s$^2$)")
+    axes[0].set_title("Gravitational Potential Along the Integrated Arc")
+    axes[0].grid(True, alpha=0.25)
+    axes[0].legend(loc="best", fontsize=8)
+    axes[1].plot(t_year, phi_cascade_m2_s2, color="#6a994e", lw=1.2)
+    axes[1].axhline(0.0, color="black", lw=0.8, alpha=0.6)
+    axes[1].set_xlabel("Years from start")
+    axes[1].set_ylabel(r"GI/OI path contribution (m$^2$/s$^2$)")
+    axes[1].set_title("Path-Integrated GI/OI Cascade Effective Potential")
+    axes[1].grid(True, alpha=0.25)
+    for axis in axes:
+        for value in anchor_t_year:
+            axis.axvline(value, color="#999999", lw=0.55, alpha=0.18)
+        if anchor_rows:
+            axis.axvline(anchor_t_year[closest_anchor_idx], color="#d1495b", lw=0.9, ls="--", alpha=0.6)
+    _save(fig, "fig_gravitational_potential_gi_oi_comparison", dpi=240)
+
+    if int(np.count_nonzero(zoom_mask)) >= 4:
+        fig, axes = plt.subplots(2, 1, figsize=(12.8, 8.2), sharex=True, facecolor="white")
+        axes[0].plot(days_from_focus, phi_standard_rel[zoom_mask], color="#1d3557", lw=1.4, label="standard gravity only")
+        axes[0].plot(days_from_focus, phi_with_rel[zoom_mask], color="#d1495b", lw=1.0, ls="--", label="standard + GI/OI effective contribution")
+        axes[0].set_ylabel(r"$\Delta\Phi$ from start (km$^2$/s$^2$)")
+        axes[0].set_title("Close-Approach Potential Zoom")
+        axes[0].grid(True, alpha=0.25)
+        axes[0].legend(loc="best", fontsize=8)
+        axes[1].plot(days_from_focus, phi_cascade_m2_s2[zoom_mask], color="#6a994e", lw=1.2)
+        axes[1].axhline(0.0, color="black", lw=0.8, alpha=0.6)
+        axes[1].set_xlabel("Days from closest CAD/minimum epoch")
+        axes[1].set_ylabel(r"GI/OI contribution (m$^2$/s$^2$)")
+        axes[1].set_title("Close-Approach GI/OI Effective Potential Contribution")
+        axes[1].grid(True, alpha=0.25)
+        _save(fig, "fig_gravitational_potential_close_approach", dpi=240)
 
     state = np.asarray(integrated_state, dtype=float)
     earth_for_plot = np.asarray(meta.get("dynamics_earth_au", meta["earth_helio_au"]), dtype=float)
@@ -4238,6 +4313,8 @@ def _write_dynamics_plots(
                 "Figure: Numerical propagation residual relative to Horizons. Residuals expose drift introduced by integrating a simplified force model rather than refitting to Horizons or CAD labels.",
                 "Figure: Residual structure with linear trend removed. The top panel shows raw range residuals and their best-fit linear drift; the lower panel removes that straight-line component so post-encounter curvature remains visible.",
                 "Figure: Close-approach zoom. The distance panel uses lunar-distance units around the nearest CAD/minimum epoch, while the residual panel shows the local predictor-minus-Horizons structure that can be hidden in full-arc plots.",
+                "Figure: Gravitational potential with and without GI/OI. The standard curve is the direct gravitational potential along the integrated path; the GI/OI curve adds the path-integrated cascade work as an effective contribution because the cascade force is not generally conservative.",
+                "Figure: Close-approach gravitational potential zoom. The same standard and GI/OI-effective potential quantities are shown around the nearest CAD/minimum epoch to expose local encounter-scale behavior.",
                 "Figure: Integrated geocentric 3-D trajectory. The curve is the propagated state transformed into the Earth-centered frame for spatial inspection of the encounter geometry.",
                 "Figure: Close-approach timeline in lunar distances. CAD anchors are converted into Moon-distance units and paired with model-minus-CAD residuals so general audiences can understand both encounter scale and predictor error.",
                 "Figure: Close-approach dashboard. A four-panel public-facing view shows distance in lunar distances, inbound/outbound range rate, Earth-centered encounter geometry in Earth radii, and the local prediction residual around the nearest CAD epoch.",
@@ -4440,7 +4517,22 @@ def run_dynamical_propagation(
         dyn_diag,
     )
     table_paths.extend(uncertainty_table_paths)
-    figure_paths = _write_dynamics_plots(output_dir, neo, hypothesis, meta, integrated_dist_au, residual_km, integrated_state, anchor_rows, dyn_diag)
+    figure_paths = _write_dynamics_plots(
+        output_dir,
+        neo,
+        hypothesis,
+        meta,
+        integrated_dist_au,
+        residual_km,
+        integrated_state,
+        anchor_rows,
+        dyn_diag,
+        perturbers=perturbers,
+        frame=frame,
+        weights=weights,
+        cascade_accel_au_d2=cascade_accel_au_d2,
+        phase_warp_gain=phase_warp_gain,
+    )
     figure_paths.extend(uncertainty_figures)
     publication_assets = [path for path in figure_paths if path.endswith("_captions.md") or path.endswith("captions.md")]
     publication_assets.extend(uncertainty_publication_assets)
