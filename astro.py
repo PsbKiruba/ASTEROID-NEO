@@ -695,16 +695,16 @@ def load_neo(target: str, date_min: str, date_max: str, dist_max: str) -> NEOObj
 
 def classify_neo_group(a_au: float, q_au: float, Q_au: float) -> str:
     """Classify using CNEOS NEO group definitions."""
-    if q_au >= 1.3:
-        return "NON_NEO"
     if a_au < 1.0 and Q_au < 0.983:
         return "IEO"
     if a_au < 1.0 and Q_au > 0.983:
         return "ATE"
-    if a_au > 1.0 and q_au < 1.017:
+    if a_au >= 1.0 and q_au <= 1.017:
         return "APO"
-    if a_au > 1.0 and 1.017 < q_au < 1.3:
+    if 1.017 < q_au <= 1.3:
         return "AMO"
+    if q_au > 1.3:
+        return "NON_NEO"
     return "NEO_UNCLASSIFIED_BOUNDARY"
 
 
@@ -4712,8 +4712,8 @@ def _build_ml_feature_matrix(
     geo_state = np.asarray(geo.state_au_d, dtype=float)
     helio_state = np.asarray(helio.state_au_d, dtype=float)
     n = min(len(geo_state), len(helio_state), len(geo.jd_tdb), len(helio.jd_tdb))
-    if n < 80:
-        raise SourceError(f"ML surrogate needs at least 80 Horizons samples; got {n}")
+    if n < 2:
+        raise SourceError(f"Horizons metadata needs at least 2 paired vector samples; got {n}")
     geo_state = geo_state[:n]
     helio_state = helio_state[:n]
     jd = np.asarray(geo.jd_tdb[:n], dtype=float)
@@ -6192,6 +6192,8 @@ def run_ml_surrogate(
     X, y, feature_names, meta = _build_ml_feature_matrix(neo, hypothesis, geo, helio)
 
     n = len(y)
+    if n < 80:
+        raise SourceError(f"ML surrogate needs at least 80 Horizons samples; got {n}")
     train_mask, calib_mask, val_mask, numerical_diagnostics = _build_time_block_partitions(
         meta["jd"], neo, refine_step, refine_window_days
     )
@@ -6832,6 +6834,10 @@ def run_self_tests() -> None:
     cascade = _oi_cascade(2.0, 3.0, gamma, terms=3)
     assert abs(cascade[0] - 4.0 * (3.0 * 3.0) * (gamma * gamma) * (2.0**3)) < 1e-12
     assert _likelihood_band(0.25) == "Fly-Bys"
+    assert classify_neo_group(1.0, 1.017, 1.5) == "APO"
+    assert classify_neo_group(1.0, 1.016, 1.5) == "APO"
+    assert classify_neo_group(1.1, 1.3, 1.8) == "AMO"
+    assert classify_neo_group(0.9, 0.7, 0.983) == "NEO_UNCLASSIFIED_BOUNDARY"
     print("self-tests passed")
 
 
