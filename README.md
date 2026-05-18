@@ -8,11 +8,18 @@ The code is deliberately framed as a challenger research model. It does not repl
 
 This repository is distributed under the GNU General Public License. See [LICENSE](LICENSE).
 
-## Main File
+## Main Files
 
-The active implementation is:
+The canonical implementation is:
 
 ```text
+asteroid_neo.py
+```
+
+The historical script names remain as thin compatibility entry points:
+
+```text
+astro.py
 Clude_gen-V5.py
 ```
 
@@ -33,6 +40,12 @@ Run the internal formula and parser sanity checks:
 
 ```bash
 python Clude_gen-V5.py --self-test
+```
+
+Run the fixture regression suite:
+
+```bash
+python -m pytest
 ```
 
 Run the default Apophis diagnostic without the numerical propagator:
@@ -64,6 +77,32 @@ python Clude_gen-V5.py \
   --phase-warp-gain 1.0 \
   --plot-dir outputs/predictor_full \
   --json outputs/predictor_full/report.json
+```
+
+Generated JSON reports and referenced CSV tables are schema-validated before
+the command exits successfully. A malformed table header, empty CSV, missing
+required report field, or schema drift raises a validation error instead of
+silently leaving questionable artifacts behind.
+
+Open the dense-bundle interactive viewer:
+
+```bash
+python neo_infographic_viewer.py --bundle outputs/predictor_3x_samples
+```
+
+The viewer includes a trust panel with validation RMSE, nearest CAD error, CAD
+anchor RMSE, sample cadence, sample count, and accepted/rejected gate states.
+
+Prepare sensitivity sweep commands without launching long network jobs:
+
+```bash
+python tools/sensitivity_sweep.py --dry-run
+```
+
+Run the sweep when you are ready for the full Horizons-backed workload:
+
+```bash
+python tools/sensitivity_sweep.py --execute --max-runs 4
 ```
 
 ## Online Data Sources

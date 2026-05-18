@@ -1,0 +1,3 @@
+anchor_id,cad_date_tdb,cad_jd_tdb,cad_distance_km,integrated_distance_km,integrated_minus_cad_km,horizons_interpolated_distance_km,horizons_interpolated_minus_cad_km,nearest_sample_date_tdb,nearest_sample_offset_hours,v_rel_km_s,orbit_id
+1,2029-Apr-13 21:45,2462240.406250,38155.0,38197.0,42.0,38165.0,10.0,A.D. 2029-Apr-13 21:45:00.0000,0.0,7.42,fixture
+2,2036-Apr-13 22:00,2464797.416667,10000000.0,10002000.0,2000.0,10001000.0,1000.0,A.D. 2029-Apr-14 00:00:00.0000,61368.0,8.10,fixture

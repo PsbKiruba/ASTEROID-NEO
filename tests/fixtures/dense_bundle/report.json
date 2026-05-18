@@ -1,0 +1,36 @@
+{
+  "generated_utc": "2026-05-18T00:00:00+00:00",
+  "target": "99942",
+  "standard": {"source": "fixture"},
+  "hypothesis": {"inputs": {"neo_group_from_orbit": "ATE"}},
+  "object": {"fullname": "99942 Apophis (fixture)"},
+  "dynamics": {
+    "enabled": true,
+    "method": "fixture dynamics",
+    "force_model": "fixture",
+    "n_samples": 5,
+    "horizons_step": "fixture 1h",
+    "integrator": "DOP853",
+    "validation_mae_km": 10.0,
+    "validation_rmse_km": 20.0,
+    "nearest_horizons_date": "A.D. 2029-Apr-13 21:45:00.0000",
+    "nearest_horizons_distance_au": 0.000255,
+    "nearest_integrated_date": "A.D. 2029-Apr-13 21:45:00.0000",
+    "nearest_integrated_distance_au": 0.0002551,
+    "nearest_integrated_error_km": 15.0,
+    "cad_validation_error_km": 42.0,
+    "numerical_diagnostics": {
+      "cad_anchor_integrated_rmse_km": 50.0,
+      "dynamics_frame": "barycentric",
+      "integrator_method": "DOP853",
+      "global_residual_gate_accepted": false,
+      "local_gate_accepted": true,
+      "tensorflow_continuous_anchor_gate_accepted": false
+    },
+    "anchor_validation": [],
+    "figures": [],
+    "tables": [],
+    "publication_assets": [],
+    "caveats": []
+  }
+}

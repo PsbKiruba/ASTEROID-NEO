@@ -142,6 +142,14 @@ def _fmt_au(value: float) -> str:
     return "n/a" if not math.isfinite(value) else f"{value:.6f} au"
 
 
+def _fmt_gate(value: Any) -> str:
+    if value is True:
+        return "accepted"
+    if value is False:
+        return "rejected"
+    return "n/a"
+
+
 def _load_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         raise FileNotFoundError(f"Missing required file: {path}")
@@ -1023,6 +1031,18 @@ class DetailPanel(QWidget):
         self.data = data
         dyn = data.report.get("dynamics", {})
         nd = dyn.get("numerical_diagnostics", {})
+        cadence = str(dyn.get("horizons_step", "n/a"))
+        cad_anchor_rmse = nd.get("cad_anchor_integrated_rmse_km", dyn.get("validation_rmse_km", float("nan")))
+        self.trust_cards: dict[str, StatCard] = {
+            "val_rmse": StatCard("Validation RMSE", _fmt_km(float(dyn.get("validation_rmse_km", float("nan")))), "#a8dadc"),
+            "cad_error": StatCard("Nearest CAD Error", _fmt_km(float(dyn.get("cad_validation_error_km", float("nan")))), "#7df9ff"),
+            "cad_rmse": StatCard("CAD Anchor RMSE", _fmt_km(float(cad_anchor_rmse)), "#b8f2e6"),
+            "cadence": StatCard("Sample Cadence", cadence, "#cdb4db"),
+            "global_gate": StatCard("Global ML Gate", _fmt_gate(nd.get("global_residual_gate_accepted")), "#f4a261"),
+            "local_gate": StatCard("Local ML Gate", _fmt_gate(nd.get("local_gate_accepted")), "#e9c46a"),
+            "tf_gate": StatCard("CAD Recon Gate", _fmt_gate(nd.get("tensorflow_continuous_anchor_gate_accepted")), "#d8a2ff"),
+            "samples": StatCard("Samples", f"{int(dyn.get('n_samples', len(data.jd))):,}", "#96f7a6"),
+        }
         self.cards: dict[str, StatCard] = {
             "date": StatCard("Current Epoch", "n/a", "#71d3ff"),
             "distance": StatCard("Integrated Range", "n/a", "#96f7a6"),
@@ -1031,18 +1051,25 @@ class DetailPanel(QWidget):
             "speed": StatCard("Heliocentric Speed", "n/a", "#d8a2ff"),
             "gi": StatCard("log10 |GI_N|", "n/a", "#ffcc66"),
             "oi": StatCard("log10 |OI_N|", "n/a", "#ff9f7a"),
-            "cad": StatCard("Nearest CAD Error", _fmt_km(float(dyn.get("cad_validation_error_km", float("nan")))), "#7df9ff"),
-            "rmse": StatCard("Validation RMSE", _fmt_km(float(dyn.get("validation_rmse_km", float("nan")))), "#a8dadc"),
             "cov": StatCard("Median Cov90", _fmt_km(float(nd.get("covariance_width90_km_median", float("nan")))), "#b8f2e6"),
             "cascade": StatCard("Cascade Accel", f"{float(nd.get('cascade_acceleration_au_d2_median', float('nan'))):.3e} au/d2", "#f4a261"),
             "phase": StatCard("Phase Accel", f"{float(nd.get('phase_acceleration_au_d2_median', float('nan'))):.3e} au/d2", "#e9c46a"),
             "solar_gr": StatCard("Solar GR Accel", f"{float(nd.get('solar_gr_acceleration_au_d2_median', float('nan'))):.3e} au/d2", "#e76f51"),
             "nongrav": StatCard("A1/A2 Accel", f"{float(nd.get('standard_nongrav_acceleration_au_d2_median', float('nan'))):.3e} au/d2", "#2a9d8f"),
             "frame": StatCard("Dynamics Frame", str(nd.get("dynamics_frame", "n/a")), "#bde0fe"),
-            "samples": StatCard("Samples", f"{int(dyn.get('n_samples', len(data.jd))):,}", "#cdb4db"),
         }
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
+        trust_title = QLabel("Trust / Validation")
+        trust_title.setObjectName("panelTitle")
+        layout.addWidget(trust_title)
+        trust_grid = QGridLayout()
+        trust_grid.setHorizontalSpacing(10)
+        trust_grid.setVerticalSpacing(10)
+        for i, card in enumerate(self.trust_cards.values()):
+            trust_grid.addWidget(card, i // 2, i % 2)
+        layout.addLayout(trust_grid)
+
         title = QLabel("Live Dynamics Fields")
         title.setObjectName("panelTitle")
         layout.addWidget(title)
@@ -1124,6 +1151,7 @@ class MainWindow(QMainWindow):
         detail_scroll.setWidgetResizable(True)
         detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
         detail_scroll.setMinimumHeight(0)
+        detail_scroll.setMinimumWidth(430)
         detail_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         detail_scroll.setWidget(self.details)
         splitter.addWidget(detail_scroll)
