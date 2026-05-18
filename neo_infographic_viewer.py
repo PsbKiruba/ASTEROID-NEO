@@ -310,7 +310,7 @@ class TrajectoryCanvas(QWidget):
         self.timer.timeout.connect(self._tick)
         self.step = max(1, len(data.jd) // 700)
         self._drag_pos: QPointF | None = None
-        self.setMinimumSize(760, 560)
+        self.setMinimumSize(760, 320)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def play(self) -> None:
@@ -714,7 +714,7 @@ class CloseApproachDashboard(QWidget):
             self.geom_window = self.window
         self.range_rate = data.range_rate_km_s
         self.geo_re = (data.pos_au - data.earth_fixed_au) * AU_KM / self.earth_radius_km
-        self.setMinimumHeight(520)
+        self.setMinimumHeight(400)
 
     def set_index(self, index: int) -> None:
         self.index = int(max(0, min(len(self.data.jd) - 1, index)))
@@ -1084,7 +1084,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.data = data
         self.setWindowTitle("ASTEROID-NEO Immersive Dynamics Infographic")
-        self.resize(1480, 1060)
+        self.resize(1480, 940)
         self.canvas = TrajectoryCanvas(data)
         self.details = DetailPanel(data)
         self.sparkline = Sparkline(data)
@@ -1109,26 +1109,27 @@ class MainWindow(QMainWindow):
 
         header = self._make_header()
         root.addWidget(header)
+        controls = self._make_controls()
+        root.addWidget(controls)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
-        left_layout.addWidget(self.canvas, 3)
-        left_layout.addWidget(self.dashboard, 2)
+        left_layout.addWidget(self.canvas, 2)
+        left_layout.addWidget(self.dashboard, 1)
         splitter.addWidget(left)
         detail_scroll = QScrollArea()
         detail_scroll.setWidgetResizable(True)
         detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        detail_scroll.setMinimumHeight(0)
+        detail_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         detail_scroll.setWidget(self.details)
         splitter.addWidget(detail_scroll)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 1)
         root.addWidget(splitter, 1)
-
-        controls = self._make_controls()
-        root.addWidget(controls)
         self.setCentralWidget(central)
         self._make_menu()
         self._apply_style()
