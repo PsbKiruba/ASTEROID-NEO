@@ -124,6 +124,32 @@ Run the sweep when you are ready for the full Horizons-backed workload:
 python tools/sensitivity_sweep.py --execute --max-runs 4
 ```
 
+Plan a multi-object NEO benchmark suite with hard gates for single-arc
+forecast error, reconstruction error, CAD anchor residuals, and sensitivity
+drift:
+
+```bash
+python tools/benchmark_neos.py --dry-run
+```
+
+Evaluate completed benchmark outputs against the default thresholds:
+
+```bash
+python tools/benchmark_neos.py --evaluate
+```
+
+For incremental/local checks against the existing Apophis bundles:
+
+```bash
+python tools/benchmark_neos.py --evaluate --include-local-outputs --allow-partial
+```
+
+The benchmark manifest currently covers Apophis, Bennu, Didymos, Ryugu,
+Phaethon, Eros, and Itokawa with both single-arc and declared reconstruction
+profiles. The `--allow-partial` flag is intentionally explicit: without it,
+threshold evaluation requires the configured minimum number of completed NEO
+targets.
+
 ## Online Data Sources
 
 The code retrieves authoritative input data at runtime:

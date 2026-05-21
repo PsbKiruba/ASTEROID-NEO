@@ -90,3 +90,47 @@ def test_sensitivity_summary_writes_existing_bundle_report(tmp_path: Path) -> No
     assert summary[0]["n_samples"] == 5
     assert summary[0]["nearest_cad_error_km"] == pytest.approx(42.0)
     assert (tmp_path / "existing_bundle_sensitivity_summary.csv").exists()
+
+
+def test_benchmark_thresholds_pass_fixture_bundle(tmp_path: Path) -> None:
+    script = Path(__file__).parents[1] / "tools" / "benchmark_neos.py"
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--evaluate",
+            "--bundle",
+            str(FIXTURE_BUNDLE),
+            "--output-root",
+            str(tmp_path),
+            "--allow-partial",
+        ],
+        check=True,
+    )
+    report = json.loads((tmp_path / "threshold_report.json").read_text(encoding="utf-8"))
+    assert report["passed"] is True
+    assert (tmp_path / "benchmark_summary.csv").exists()
+
+
+def test_benchmark_thresholds_fail_hard_limit(tmp_path: Path) -> None:
+    script = Path(__file__).parents[1] / "tools" / "benchmark_neos.py"
+    thresholds = tmp_path / "thresholds.json"
+    thresholds.write_text('{"single_arc_validation_rmse_km_max": 1.0}', encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--evaluate",
+            "--bundle",
+            str(FIXTURE_BUNDLE),
+            "--output-root",
+            str(tmp_path),
+            "--thresholds",
+            str(thresholds),
+            "--allow-partial",
+        ],
+        check=False,
+    )
+    assert result.returncode == 2
+    report = json.loads((tmp_path / "threshold_report.json").read_text(encoding="utf-8"))
+    assert report["passed"] is False
