@@ -99,11 +99,24 @@ Prepare sensitivity sweep commands without launching long network jobs:
 python tools/sensitivity_sweep.py --dry-run
 ```
 
+Include broad-residual reconstruction profiles that periodically refresh the
+osculating state from Horizons. These are useful for reconstruction and force
+model diagnostics, but they are not single-arc forecasts:
+
+```bash
+python tools/sensitivity_sweep.py --dry-run --include-reconstruction
+```
+
 Summarize the already-generated sample-density bundles:
 
 ```bash
 python tools/sensitivity_sweep.py --summarize-existing
 ```
+
+The existing `outputs/predictor_refresh30` profile uses a declared 30-day
+state refresh. On the coarse 1-day/1-hour bundle it reduced broad Horizons
+RMSE from roughly `428,011 km` in single-arc mode to roughly `4 km`, while the
+report labels the mode as `osculating_reconstruction`.
 
 Run the sweep when you are ready for the full Horizons-backed workload:
 

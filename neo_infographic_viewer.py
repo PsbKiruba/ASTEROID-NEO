@@ -1032,8 +1032,14 @@ class DetailPanel(QWidget):
         dyn = data.report.get("dynamics", {})
         nd = dyn.get("numerical_diagnostics", {})
         cadence = str(dyn.get("horizons_step", "n/a"))
+        prediction_mode = str(nd.get("prediction_mode", "n/a"))
+        refresh_count = int(float(nd.get("state_refresh_count", 0.0))) if nd.get("state_refresh_count") is not None else 0
+        refresh_days = float(nd.get("state_refresh_segment_days", 0.0) or 0.0)
+        refresh_text = "none" if refresh_count <= 0 else f"{refresh_count} / {refresh_days:g} d"
         cad_anchor_rmse = nd.get("cad_anchor_integrated_rmse_km", dyn.get("validation_rmse_km", float("nan")))
         self.trust_cards: dict[str, StatCard] = {
+            "mode": StatCard("Prediction Mode", prediction_mode.replace("_", " "), "#ffd166"),
+            "refresh": StatCard("State Refresh", refresh_text, "#ffb703"),
             "val_rmse": StatCard("Validation RMSE", _fmt_km(float(dyn.get("validation_rmse_km", float("nan")))), "#a8dadc"),
             "cad_error": StatCard("Nearest CAD Error", _fmt_km(float(dyn.get("cad_validation_error_km", float("nan")))), "#7df9ff"),
             "cad_rmse": StatCard("CAD Anchor RMSE", _fmt_km(float(cad_anchor_rmse)), "#b8f2e6"),

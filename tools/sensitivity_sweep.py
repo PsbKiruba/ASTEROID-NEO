@@ -27,13 +27,16 @@ class SweepRun:
     integrator_rtol: float
     integrator_atol: float
     uncertainty_samples: int
+    state_refresh_days: float = 0.0
+    post_encounter_reset_days: float = 0.0
+    profile: str = "single_arc_predictor"
 
     def output_dir(self, root: Path) -> Path:
         return root / self.name
 
     def command(self, output_root: Path, target: str, date_min: str, date_max: str, dist_max: str) -> list[str]:
         out = self.output_dir(output_root)
-        return [
+        command = [
             sys.executable,
             str(ROOT / "astro.py"),
             "--target",
@@ -68,9 +71,14 @@ class SweepRun:
             "--json",
             str(out / "report.json"),
         ]
+        if self.state_refresh_days > 0.0:
+            command.extend(["--state-refresh-days", f"{self.state_refresh_days:g}"])
+        if self.post_encounter_reset_days > 0.0:
+            command.extend(["--post-encounter-reset-days", f"{self.post_encounter_reset_days:g}"])
+        return command
 
 
-def build_runs() -> list[SweepRun]:
+def build_runs(include_reconstruction: bool = False) -> list[SweepRun]:
     cadence_grid = [
         ("12h", "1h", 5.0),
         ("6h", "30m", 5.0),
@@ -99,6 +107,34 @@ def build_runs() -> list[SweepRun]:
                 uncertainty_samples=samples,
             )
         )
+    if include_reconstruction:
+        runs.extend(build_reconstruction_runs(start=len(runs) + 1))
+    return runs
+
+
+def build_reconstruction_runs(start: int = 1) -> list[SweepRun]:
+    """Return declared multi-arc reconstruction profiles for broad residual control."""
+    specs = [
+        ("30d", 30.0, "1d", "1h", 5.0, 0.125, 1e-11, 1e-13, 128),
+        ("90d", 90.0, "1d", "1h", 5.0, 0.125, 1e-11, 1e-13, 128),
+        ("30d_dense", 30.0, "6h", "15m", 7.0, 0.0625, 5e-12, 5e-14, 256),
+    ]
+    runs: list[SweepRun] = []
+    for offset, (label, refresh, h_step, r_step, window, max_step, rtol, atol, samples) in enumerate(specs):
+        runs.append(
+            SweepRun(
+                name=f"reconstruct_{start + offset:02d}_{label}_{h_step}_{r_step}",
+                horizons_step=h_step,
+                refine_step=r_step,
+                refine_window_days=window,
+                integrator_max_step_days=max_step,
+                integrator_rtol=rtol,
+                integrator_atol=atol,
+                uncertainty_samples=samples,
+                state_refresh_days=refresh,
+                profile="osculating_reconstruction",
+            )
+        )
     return runs
 
 
@@ -112,6 +148,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-runs", type=int, default=0, help="Limit sweep count; 0 means all configured runs.")
     parser.add_argument("--execute", action="store_true", help="Actually run jobs. Default is dry-run planning.")
     parser.add_argument("--dry-run", action="store_true", help="Print and write the plan without running jobs.")
+    parser.add_argument(
+        "--include-reconstruction",
+        action="store_true",
+        help="Include declared osculating-refresh reconstruction profiles in the sweep plan.",
+    )
     parser.add_argument(
         "--summarize-existing",
         action="store_true",
@@ -169,6 +210,9 @@ def _summarize_bundle(bundle: Path) -> dict[str, Any]:
         "bundle": str(bundle),
         "n_samples": int(dynamics.get("n_samples", 0)),
         "horizons_step": dynamics.get("horizons_step", ""),
+        "prediction_mode": diagnostics.get("prediction_mode", ""),
+        "state_refresh_count": _float_or_blank(diagnostics.get("state_refresh_count")),
+        "state_refresh_segment_days": _float_or_blank(diagnostics.get("state_refresh_segment_days")),
         "integrator": dynamics.get("integrator", diagnostics.get("integrator_method", "")),
         "integrator_rtol": _float_or_blank(diagnostics.get("integrator_rtol")),
         "integrator_atol": _float_or_blank(diagnostics.get("integrator_atol")),
@@ -213,6 +257,9 @@ def write_existing_summary(output_root: Path, bundles: list[Path]) -> None:
         columns = [
             "bundle",
             "n_samples",
+            "prediction_mode",
+            "state_refresh_count",
+            "state_refresh_segment_days",
             "horizons_step",
             "integrator_rtol",
             "integrator_atol",
@@ -238,9 +285,12 @@ def main(argv: list[str] | None = None) -> int:
             ROOT / "outputs" / "predictor_high_samples",
             ROOT / "outputs" / "predictor_3x_samples",
         ]
+        refresh_bundle = ROOT / "outputs" / "predictor_refresh30"
+        if not args.existing_bundle and (refresh_bundle / "report.json").exists():
+            bundles.append(refresh_bundle)
         write_existing_summary(args.output_root, bundles)
         return 0
-    runs = build_runs()
+    runs = build_runs(include_reconstruction=args.include_reconstruction)
     if args.max_runs > 0:
         runs = runs[: args.max_runs]
     commands = [run.command(args.output_root, args.target, args.date_min, args.date_max, args.dist_max) for run in runs]
