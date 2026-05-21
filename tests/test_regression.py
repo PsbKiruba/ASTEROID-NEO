@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -68,3 +70,23 @@ def test_output_schema_validation_rejects_missing_required_column(tmp_path: Path
     table.write_text("jd_tdb,calendar_tdb\n2462240.5,A.D. 2029-Apr-14\n", encoding="utf-8")
     with pytest.raises(neo.SchemaValidationError):
         neo.validate_csv_table(table)
+
+
+def test_sensitivity_summary_writes_existing_bundle_report(tmp_path: Path) -> None:
+    script = Path(__file__).parents[1] / "tools" / "sensitivity_sweep.py"
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--summarize-existing",
+            "--existing-bundle",
+            str(FIXTURE_BUNDLE),
+            "--output-root",
+            str(tmp_path),
+        ],
+        check=True,
+    )
+    summary = json.loads((tmp_path / "existing_bundle_sensitivity_summary.json").read_text(encoding="utf-8"))
+    assert summary[0]["n_samples"] == 5
+    assert summary[0]["nearest_cad_error_km"] == pytest.approx(42.0)
+    assert (tmp_path / "existing_bundle_sensitivity_summary.csv").exists()

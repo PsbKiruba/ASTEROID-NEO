@@ -11,6 +11,7 @@ import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +112,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-runs", type=int, default=0, help="Limit sweep count; 0 means all configured runs.")
     parser.add_argument("--execute", action="store_true", help="Actually run jobs. Default is dry-run planning.")
     parser.add_argument("--dry-run", action="store_true", help="Print and write the plan without running jobs.")
+    parser.add_argument(
+        "--summarize-existing",
+        action="store_true",
+        help="Summarize already-generated output bundles as a completed sensitivity sweep.",
+    )
+    parser.add_argument(
+        "--existing-bundle",
+        action="append",
+        type=Path,
+        default=[],
+        help="Existing output bundle to include in --summarize-existing. Can be passed more than once.",
+    )
     return parser.parse_args(argv)
 
 
@@ -131,8 +144,102 @@ def write_manifest(output_root: Path, runs: list[SweepRun], commands: list[list[
         writer.writerows(manifest)
 
 
+def _safe_nested(mapping: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    current: Any = mapping
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key, default)
+    return current
+
+
+def _float_or_blank(value: Any) -> float | str:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return ""
+
+
+def _summarize_bundle(bundle: Path) -> dict[str, Any]:
+    report_path = bundle / "report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    dynamics = report.get("dynamics", {})
+    diagnostics = dynamics.get("numerical_diagnostics", {})
+    return {
+        "bundle": str(bundle),
+        "n_samples": int(dynamics.get("n_samples", 0)),
+        "horizons_step": dynamics.get("horizons_step", ""),
+        "integrator": dynamics.get("integrator", diagnostics.get("integrator_method", "")),
+        "integrator_rtol": _float_or_blank(diagnostics.get("integrator_rtol")),
+        "integrator_atol": _float_or_blank(diagnostics.get("integrator_atol")),
+        "integrator_substep_max_days": _float_or_blank(diagnostics.get("integrator_substep_max_days")),
+        "validation_mae_km": _float_or_blank(dynamics.get("validation_mae_km")),
+        "validation_rmse_km": _float_or_blank(dynamics.get("validation_rmse_km")),
+        "nearest_cad_error_km": _float_or_blank(dynamics.get("cad_validation_error_km")),
+        "cad_anchor_mae_km": _float_or_blank(diagnostics.get("cad_anchor_integrated_mae_km")),
+        "cad_anchor_rmse_km": _float_or_blank(diagnostics.get("cad_anchor_integrated_rmse_km")),
+        "covariance_width90_km_median": _float_or_blank(diagnostics.get("covariance_width90_km_median")),
+        "gi_oi_cascade_width90_km_median": _float_or_blank(diagnostics.get("gi_oi_cascade_width90_km_median")),
+        "global_gate_accepted": _safe_nested(diagnostics, "global_residual_gate_accepted", default="n/a"),
+        "local_gate_accepted": _safe_nested(diagnostics, "local_gate_accepted", default="n/a"),
+        "cad_reconstruction_gate_accepted": _safe_nested(
+            diagnostics,
+            "tensorflow_continuous_anchor_gate_accepted",
+            default="n/a",
+        ),
+    }
+
+
+def write_existing_summary(output_root: Path, bundles: list[Path]) -> None:
+    output_root.mkdir(parents=True, exist_ok=True)
+    rows = [_summarize_bundle(bundle.expanduser().resolve()) for bundle in bundles]
+    if not rows:
+        raise FileNotFoundError("No existing bundles were provided for summary")
+    rows.sort(key=lambda row: int(row["n_samples"]))
+    json_path = output_root / "existing_bundle_sensitivity_summary.json"
+    csv_path = output_root / "existing_bundle_sensitivity_summary.csv"
+    md_path = output_root / "existing_bundle_sensitivity_summary.md"
+    json_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    with csv_path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    with md_path.open("w", encoding="utf-8") as fh:
+        fh.write("# Existing Bundle Sensitivity Summary\n\n")
+        fh.write(
+            "This table compares already-generated dynamics bundles across sample density, "
+            "cadence/refinement settings, and integrator tolerances.\n\n"
+        )
+        columns = [
+            "bundle",
+            "n_samples",
+            "horizons_step",
+            "integrator_rtol",
+            "integrator_atol",
+            "validation_rmse_km",
+            "nearest_cad_error_km",
+            "cad_anchor_rmse_km",
+        ]
+        fh.write("| " + " | ".join(columns) + " |\n")
+        fh.write("| " + " | ".join("---" for _ in columns) + " |\n")
+        for row in rows:
+            values = [str(row[column]) for column in columns]
+            fh.write("| " + " | ".join(values) + " |\n")
+    print(f"wrote {json_path}")
+    print(f"wrote {csv_path}")
+    print(f"wrote {md_path}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.summarize_existing:
+        bundles = args.existing_bundle or [
+            ROOT / "outputs" / "predictor_full",
+            ROOT / "outputs" / "predictor_high_samples",
+            ROOT / "outputs" / "predictor_3x_samples",
+        ]
+        write_existing_summary(args.output_root, bundles)
+        return 0
     runs = build_runs()
     if args.max_runs > 0:
         runs = runs[: args.max_runs]

@@ -99,6 +99,12 @@ Prepare sensitivity sweep commands without launching long network jobs:
 python tools/sensitivity_sweep.py --dry-run
 ```
 
+Summarize the already-generated sample-density bundles:
+
+```bash
+python tools/sensitivity_sweep.py --summarize-existing
+```
+
 Run the sweep when you are ready for the full Horizons-backed workload:
 
 ```bash
